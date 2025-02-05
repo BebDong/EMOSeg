@@ -16,6 +16,13 @@ Please kindly cite our paper if you feel our codes help in your research.
   doi={10.1109/TIP.2025.3534532}
 }
 
+@article{tang2023category,
+  title={Category feature transformer for semantic segmentation},
+  author={Tang, Quan and Liu, Chuanjian and Liu, Fagui and Liu, Yifan and Jiang, Jun and Zhang, Bowen and Han, Kai and Wang, Yunhe},
+  journal={arXiv preprint arXiv:2308.05581},
+  year={2023}
+}
+
 @article{tang2025increase,
   title={Increase the sensitivity of moderate examples for semantic image segmentation},
   author={Tang, Quan and Liu, Fagui and Zhang, Dengke and Jiang, Jun and Tang, Xuhao and Chen, CL Philip},
