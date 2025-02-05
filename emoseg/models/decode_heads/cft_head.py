@@ -182,6 +182,7 @@ class CFTHead(BaseDecodeHead):
             out = torch.cat(fpn_outs, dim=1)
             out = self.scale_heads(out)
 
+        # return out
         out = self.cls_seg(out)
         return masks, out
 

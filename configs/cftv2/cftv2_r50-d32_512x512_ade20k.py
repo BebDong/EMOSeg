@@ -11,8 +11,7 @@ data_preprocessor = dict(
     bgr_to_rgb=True,
     pad_val=0,
     seg_pad_val=255,
-    size=crop_size,
-)
+    size=crop_size)
 model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
@@ -27,18 +26,18 @@ model = dict(
         norm_cfg=norm_cfg,
         norm_eval=False,
         style='pytorch',
-        contract_dilation=True
-    ),
+        contract_dilation=True),
     decode_head=dict(
-        type='CFTHead',
-        fpn_up=False,
-        feature_strides=(4, 8, 16, 32),
+        type='CFTHeadV2',
         num_heads=4,
         attn_drop_rate=0.,
         drop_rate=0.,
         qkv_bias=True,
         mlp_ratio=4,
         ln_norm_cfg=dict(type='LN', eps=1e-6),
+        use_memory=False,
+        momentum_cfg=dict(start=0.1, use_poly=False, total_iter=160000, power=0.9, eta_min=0.009),
+        init_memory='pretrained/init-memory_r101d8_ade20k-train.npy',
         in_channels=(256, 512, 1024, 2048),
         channels=256,
         num_classes=num_classes,
@@ -47,13 +46,11 @@ model = dict(
         act_cfg=dict(type='ReLU'),
         in_index=(0, 1, 2, 3),
         align_corners=False,
-        loss_decode=[
-            dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
-            dict(type='MaskLoss', num_classes=num_classes, mask_weight=5.0, dice_weight=2.0, loss_weight=1.0)],
+        loss_decode=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
+        loss_mask_decode=dict(type='MaskLoss', mask_weight=5.0, dice_weight=2.0, loss_weight=1.0),
         init_cfg=[dict(type='Normal', std=0.01, override=dict(name='conv_seg')),
                   dict(type='TruncNormal', layer='Linear', std=0.02),
-                  dict(type='Constant', layer='LayerNorm', val=1., bias=0.)]
-    ),
+                  dict(type='Constant', layer='LayerNorm', val=1., bias=0.)]),
     train_cfg=dict(),
     test_cfg=dict(mode='whole')
 )
@@ -95,8 +92,8 @@ tta_pipeline = [
         ])
 ]
 train_dataloader = dict(
-    batch_size=1,
-    num_workers=4,
+    batch_size=4,
+    num_workers=8,
     persistent_workers=True,
     sampler=dict(type='InfiniteSampler', shuffle=True),
     dataset=dict(
@@ -115,7 +112,6 @@ val_dataloader = dict(
         data_prefix=dict(img_path='images/validation', seg_map_path='annotations/validation'),
         pipeline=test_pipeline))
 test_dataloader = val_dataloader
-
 val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU'])
 test_evaluator = val_evaluator
 
@@ -130,16 +126,9 @@ param_scheduler = [
 train_cfg = dict(type='IterBasedTrainLoop', max_iters=160000, val_interval=16000)
 val_cfg = dict(type='ValLoop')
 test_cfg = dict(type='TestLoop')
-default_hooks = dict(timer=dict(type='IterTimerHook'),
-                     logger=dict(type='LoggerHook', interval=50, log_metric_by_epoch=False),
-                     param_scheduler=dict(type='ParamSchedulerHook'),
-                     checkpoint=dict(type='CheckpointHook', by_epoch=False, interval=16000),
-                     sampler_seed=dict(type='DistSamplerSeedHook'),
-                     visualization=dict(type='SegVisualizationHook'))
+default_hooks = dict(checkpoint=dict(type='CheckpointHook', by_epoch=False, interval=16000))
+custom_hooks = [dict(type='RunnerInfoHook', priority='NORMAL')]
 
 # runtime
 visualizer = dict(type='SegLocalVisualizer', vis_backends=[dict(type='LocalVisBackend')],
                   name='visualizer')  # debug w/o wandb
-# visualizer = dict(type='SegLocalVisualizer',
-#                   vis_backends=[dict(type='LocalVisBackend'), dict(type='WandbVisBackend')],
-#                   name='visualizer')

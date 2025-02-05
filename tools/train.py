@@ -15,6 +15,8 @@ env_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if env_dir not in sys.path:
     sys.path.insert(0, env_dir)
 
+from emoseg.datasets import *
+from emoseg.engine import *
 from emoseg.models import *
 
 

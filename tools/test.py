@@ -12,6 +12,8 @@ if env_dir not in sys.path:
     sys.path.insert(0, env_dir)
 
 from emoseg.models import *
+from emoseg.datasets import *
+from emoseg.engine import *
 
 
 # TODO: support fuse_conv_bn, visualization, and format_only

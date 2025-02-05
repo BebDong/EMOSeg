@@ -1,7 +1,7 @@
 _base_ = ['../_base_/default_runtime.py']
 
-# model
-num_classes = 150
+# model settings
+num_classes = 21
 crop_size = (512, 512)
 norm_cfg = dict(type='SyncBN', requires_grad=True)
 data_preprocessor = dict(
@@ -10,60 +10,58 @@ data_preprocessor = dict(
     std=[58.395, 57.12, 57.375],
     bgr_to_rgb=True,
     pad_val=0,
-    seg_pad_val=255,
     size=crop_size,
-)
+    seg_pad_val=255)
 model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
-    pretrained='open-mmlab://resnet50_v1c',
+    pretrained='open-mmlab://resnet101_v1c',
     backbone=dict(
         type='ResNetV1c',
-        depth=50,
+        depth=101,
         num_stages=4,
-        dilations=(1, 1, 1, 1),
-        strides=(1, 2, 2, 2),
         out_indices=(0, 1, 2, 3),
+        dilations=(1, 1, 2, 4),
+        strides=(1, 2, 1, 1),
         norm_cfg=norm_cfg,
         norm_eval=False,
         style='pytorch',
-        contract_dilation=True
-    ),
+        contract_dilation=True),
     decode_head=dict(
-        type='CFTHead',
-        fpn_up=False,
-        feature_strides=(4, 8, 16, 32),
-        num_heads=4,
-        attn_drop_rate=0.,
-        drop_rate=0.,
-        qkv_bias=True,
-        mlp_ratio=4,
-        ln_norm_cfg=dict(type='LN', eps=1e-6),
-        in_channels=(256, 512, 1024, 2048),
-        channels=256,
+        type='DepthwiseSeparableASPPHead',
+        in_channels=2048,
+        in_index=3,
+        channels=512,
+        dilations=(1, 12, 24, 36),
+        c1_in_channels=256,
+        c1_channels=48,
+        dropout_ratio=0.1,
         num_classes=num_classes,
-        dropout_ratio=.1,
         norm_cfg=norm_cfg,
-        act_cfg=dict(type='ReLU'),
-        in_index=(0, 1, 2, 3),
         align_corners=False,
-        loss_decode=[
-            dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
-            dict(type='MaskLoss', num_classes=num_classes, mask_weight=5.0, dice_weight=2.0, loss_weight=1.0)],
-        init_cfg=[dict(type='Normal', std=0.01, override=dict(name='conv_seg')),
-                  dict(type='TruncNormal', layer='Linear', std=0.02),
-                  dict(type='Constant', layer='LayerNorm', val=1., bias=0.)]
+        # sampler=dict(type='OHEMPixelSampler', thresh=0.7, min_kept=100000),
+        loss_decode=dict(
+            # type='SensitiveLoss', num_classes=num_classes, gamma=0.3, use_scale=True, loss_weight=1.0
+            # type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0
+            # type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0,
+            # class_weight=[0.7867, 1.0397, 1.1052, 1.0236, 1.0515, 1.0514, 0.9785, 0.9931, 0.9515, 1.0065,
+            #               1.0292, 0.9953, 0.979, 1.022, 1.0059, 0.918, 1.0443, 1.0229, 0.991, 0.9846, 1.02]
+            # type='FocalLoss2d', gamma=2.0, loss_weight=1.0
+            type='LovaszLoss', loss_weight=1.0, per_image=True, reduction='mean'
+            # type='TverskyLoss', loss_weight=1.0
+            # type='PolyLoss', epsilon=2.0, loss_weight=1.0,
+        )
     ),
+    # model training and testing settings
     train_cfg=dict(),
-    test_cfg=dict(mode='whole')
-)
+    test_cfg=dict(mode='whole'))
 
-# dataset
-dataset_type = 'ADE20KDataset'
-data_root = 'data/ade/ADEChallengeData2016'
+# dataset settings
+dataset_type = 'PascalVOCDataset'
+data_root = 'data/VOCdevkit/VOC2012'
 train_pipeline = [
     dict(type='LoadImageFromFile'),
-    dict(type='LoadAnnotations', reduce_zero_label=True),
+    dict(type='LoadAnnotations'),
     dict(type='RandomResize', scale=(2048, 512), ratio_range=(0.5, 2.0), keep_ratio=True),
     dict(type='RandomCrop', crop_size=crop_size, cat_max_ratio=0.75),
     dict(type='RandomFlip', prob=0.5),
@@ -75,7 +73,7 @@ test_pipeline = [
     dict(type='Resize', scale=(2048, 512), keep_ratio=True),
     # add loading annotation after ``Resize`` because ground truth
     # does not need to do resize data transform
-    dict(type='LoadAnnotations', reduce_zero_label=True),
+    dict(type='LoadAnnotations'),
     dict(type='PackSegInputs')
 ]
 img_ratios = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
@@ -95,14 +93,15 @@ tta_pipeline = [
         ])
 ]
 train_dataloader = dict(
-    batch_size=1,
-    num_workers=4,
+    batch_size=4,
+    num_workers=8,
     persistent_workers=True,
     sampler=dict(type='InfiniteSampler', shuffle=True),
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        data_prefix=dict(img_path='images/training', seg_map_path='annotations/training'),
+        data_prefix=dict(img_path='JPEGImages', seg_map_path='SegmentationClass'),
+        ann_file='ImageSets/Segmentation/train.txt',
         pipeline=train_pipeline))
 val_dataloader = dict(
     batch_size=1,
@@ -112,34 +111,29 @@ val_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        data_prefix=dict(img_path='images/validation', seg_map_path='annotations/validation'),
+        data_prefix=dict(img_path='JPEGImages', seg_map_path='SegmentationClass'),
+        ann_file='ImageSets/Segmentation/val.txt',
         pipeline=test_pipeline))
 test_dataloader = val_dataloader
-
 val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU'])
 test_evaluator = val_evaluator
 
-# schedule
-optim_wrapper = dict(type='OptimWrapper',
-                     optimizer=dict(type='AdamW', lr=6e-5, betas=(0.9, 0.999), weight_decay=1e-5),
-                     paramwise_cfg=dict(custom_keys={'head': dict(lr_mult=10., decay_mult=1000)}))
-param_scheduler = [
-    dict(type='LinearLR', start_factor=1e-6, by_epoch=False, begin=0, end=1500),
-    dict(type='PolyLR', eta_min=0.0, power=1.0, begin=1500, end=160000, by_epoch=False)
-]
-train_cfg = dict(type='IterBasedTrainLoop', max_iters=160000, val_interval=16000)
+# optimizer
+optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0001)
+optim_wrapper = dict(type='OptimWrapper', optimizer=optimizer, clip_grad=None)
+# learning policy
+param_scheduler = [dict(type='PolyLR', eta_min=1e-4, power=0.9, begin=0, end=10000, by_epoch=False)]
+train_cfg = dict(type='IterBasedTrainLoop', max_iters=10000, val_interval=1000)
 val_cfg = dict(type='ValLoop')
 test_cfg = dict(type='TestLoop')
-default_hooks = dict(timer=dict(type='IterTimerHook'),
-                     logger=dict(type='LoggerHook', interval=50, log_metric_by_epoch=False),
-                     param_scheduler=dict(type='ParamSchedulerHook'),
-                     checkpoint=dict(type='CheckpointHook', by_epoch=False, interval=16000),
-                     sampler_seed=dict(type='DistSamplerSeedHook'),
-                     visualization=dict(type='SegVisualizationHook'))
+default_hooks = dict(
+    timer=dict(type='IterTimerHook'),
+    logger=dict(type='LoggerHook', interval=50, log_metric_by_epoch=False),
+    param_scheduler=dict(type='ParamSchedulerHook'),
+    checkpoint=dict(type='CheckpointHook', by_epoch=False, interval=1000),
+    sampler_seed=dict(type='DistSamplerSeedHook'),
+    visualization=dict(type='SegVisualizationHook'))
 
 # runtime
 visualizer = dict(type='SegLocalVisualizer', vis_backends=[dict(type='LocalVisBackend')],
                   name='visualizer')  # debug w/o wandb
-# visualizer = dict(type='SegLocalVisualizer',
-#                   vis_backends=[dict(type='LocalVisBackend'), dict(type='WandbVisBackend')],
-#                   name='visualizer')
